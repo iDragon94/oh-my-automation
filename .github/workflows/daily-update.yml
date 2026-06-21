@@ -1,0 +1,47 @@
+name: Daily Shadowrocket Update
+
+# 每天 8:30（香港时间 UTC+8）拉取最新 lazy_group.conf 并执行修改脚本
+# cron 用 UTC：8:30 HKT = 0:30 UTC
+on:
+  schedule:
+    - cron: '30 0 * * *'
+  workflow_dispatch:  # 允许手动触发，方便测试
+
+permissions:
+  contents: write  # 允许 workflow 提交回仓库
+
+concurrency:
+  group: daily-shadowrocket-update
+  cancel-in-progress: false
+
+jobs:
+  fetch-and-modify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch latest lazy_group.conf
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            -o automation/shadowrocket/lazy_group.conf \
+            https://johnshall.github.io/Shadowrocket-ADBlock-Rules-Forever/lazy_group.conf
+          echo "Downloaded. Size: $(wc -c < automation/shadowrocket/lazy_group.conf) bytes"
+
+      - name: Run modify script
+        run: python3 automation/shadowrocket/modify.py
+
+      - name: Commit & push if changed
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add automation/shadowrocket/lazy_group.conf
+          if git diff --cached --quiet; then
+            echo "No changes after modify — skip commit."
+          else
+            git commit -m "chore(shadowrocket): daily update $(date -u +%F)"
+            git push
+            echo "Pushed daily update."
+          fi
